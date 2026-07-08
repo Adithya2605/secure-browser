@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Proctor</title>
+  <style>
+    body { margin: 0; background: #000; overflow: hidden; }
+    video, canvas { display: block; }
+  </style>
+</head>
+<body>
+
+<!-- Webcam feed (must be visible in DOM for TF.js to read pixels) -->
+<video  id="video"  width="320" height="240" autoplay muted playsinline></video>
+<!-- Off-screen canvas used when the video element needs a snapshot -->
+<canvas id="canvas" width="320" height="240" style="display:none"></canvas>
+
+<!--
+  TF.js loaded as UMD bundles from local node_modules.
+  nodeIntegration:true + webSecurity:false lets file:// load these.
+  They attach to window.tf and window.blazeface respectively.
+-->
+<script src="./node_modules/@tensorflow/tfjs/dist/tf.min.js"></script>
+<script src="./node_modules/@tensorflow-models/blazeface/dist/blazeface.min.umd.js"></script>
+
+<script>
+/* global tf, blazeface */
+'use strict';
+
+// nodeIntegration: true — require is available
+const { ipcRenderer } = require('electron');
+
+const video  = document.getElementById('video');
+let model    = null;
+let timer    = null;
+let intervalMs = 5000; // default; overridden by 'set-interval' from main
+
+// ── IPC: main process sets detection interval after load ─────────────────────
+ipcRenderer.on('set-interval', (_e, ms) => {
+  intervalMs = ms;
+  if (timer) {
+    clearInterval(timer);
+    startLoop();
+  }
+});
+
+// ── Main init ─────────────────────────────────────────────────────────────────
+async function init() {
+  ipcRenderer.send('proctor-log', 'Starting proctor window...');
+
+  // 1. Force WebGL backend (fastest; falls back to WASM → CPU automatically)
+  try {
+    await tf.setBackend('webgl');
+    await tf.ready();
+    ipcRenderer.send('proctor-log', `TF.js ready — backend: ${tf.getBackend()}`);
+  } catch (e) {
+    ipcRenderer.send('proctor-log', `WebGL unavailable, using CPU: ${e.message}`);
+  }
+
+  // 2. Access webcam
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 320, height: 240, facingMode: 'user' },
+      audio: false,
+    });
+  } catch (err) {
+    ipcRenderer.send('proctor-error', { phase: 'camera', message: err.message });
+    return;
+  }
+
+  video.srcObject = stream;
+  await new Promise((resolve, reject) => {
+    video.onloadedmetadata = resolve;
+    video.onerror = reject;
+  });
+  video.play();
+
+  // ── Immediate camera-closed detection ───────────────────────────────────
+  // Fire CAMERA_ERROR right away when the OS closes the stream or track,
+  // without waiting for the next detection-loop tick.
+  function onCameraLost(reason) {
+    if (timer) { clearInterval(timer); timer = null; }
+    ipcRenderer.send('proctor-error', { phase: 'camera', message: reason });
+  }
+
+  stream.addEventListener('inactive', () =>
+    onCameraLost('Camera stream became inactive (device closed or disconnected).'));
+
+  stream.getTracks().forEach(track => {
+    track.addEventListener('ended', () =>
+      onCameraLost(`Camera track ended — device may have been unplugged or access revoked.`));
+  });
+
+  // ── Handle video element losing its source (e.g. track muted/stopped) ──
+  video.addEventListener('emptied', () =>
+    onCameraLost('Video source was cleared — camera may have been stopped.'));
+
+  // 3. Load BlazeFace model using a custom Node.js IO handler.
+  //    Why not file:// URL? Electron's fetch() over file:// does not reliably
+  //    preserve binary alignment for .bin weight shards — causes the
+  //    "Float32Array must be multiple of 4" error. fs.readFileSync is binary-safe.
+  try {
+    ipcRenderer.send('proctor-log', 'Loading BlazeFace model via Node.js IO handler...');
+
+    const nodePath = require('path');
+    const nodeFs   = require('fs');
+    const modelDir = nodePath.join(__dirname, 'assets', 'blazeface-model');
+    const modelJsonPath = nodePath.join(modelDir, 'model.json');
+
+    // Build a custom TF.js IOHandler backed by Node.js fs
+    const nodeIOHandler = {
+      load: async () => {
+        // Read and parse the model topology + weight manifest
+        const modelJSON = JSON.parse(nodeFs.readFileSync(modelJsonPath, 'utf8'));
+
+        // Collect weight specs and read every shard as raw binary
+        const weightSpecs = [];
+        const shardBuffers = [];
+
+        for (const group of modelJSON.weightsManifest) {
+          weightSpecs.push(...group.weights);
+          for (const shardRelPath of group.paths) {
+            const absPath  = nodePath.join(modelDir, shardRelPath);
+            const nodeBuf  = nodeFs.readFileSync(absPath); // Buffer (binary-safe)
+            // Convert Node Buffer → ArrayBuffer
+            const ab = nodeBuf.buffer.slice(
+              nodeBuf.byteOffset,
+              nodeBuf.byteOffset + nodeBuf.byteLength
+            );
+            shardBuffers.push(ab);
+          }
+        }
+
+        // Concatenate all shards into a single ArrayBuffer
+        const totalBytes = shardBuffers.reduce((s, b) => s + b.byteLength, 0);
+        const combined   = new Uint8Array(totalBytes);
+        let offset = 0;
+        for (const ab of shardBuffers) {
+          combined.set(new Uint8Array(ab), offset);
+          offset += ab.byteLength;
+        }
+
+        return {
+          modelTopology: modelJSON.modelTopology,
+          weightSpecs,
+          weightData: combined.buffer,
+          format:     modelJSON.format,
+          generatedBy: modelJSON.generatedBy,
+          convertedBy: modelJSON.convertedBy,
+        };
+      },
+    };
+
+    model = await blazeface.load({ modelUrl: nodeIOHandler, maxFaces: 4, scoreThreshold: 0.75 });
+    ipcRenderer.send('proctor-log', 'BlazeFace model loaded successfully (fully offline).');
+  } catch (err) {
+    ipcRenderer.send('proctor-error', { phase: 'model', message: err.message });
+    return;
+  }
+
+  // 4. Start detection loop
+  startLoop();
+}
+
+function startLoop() {
+  timer = setInterval(runDetection, intervalMs);
+  // Run once immediately so there's no gap at startup
+  runDetection();
+}
+
+async function runDetection() {
+  if (!model || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+
+  let predictions;
+  try {
+    // returnTensors: false → returns plain JS objects (no manual tensor disposal)
+    predictions = await model.estimateFaces(video, /* returnTensors */ false);
+  } catch (err) {
+    ipcRenderer.send('proctor-error', { phase: 'detection', message: err.message });
+    return;
+  }
+
+  const faceCount = predictions.length;
+
+  let status;
+  if      (faceCount === 0) status = 'NO_FACE';
+  else if (faceCount === 1) status = 'FACE_PRESENT';
+  else                      status = 'MULTIPLE_FACES';
+
+  // Include landmark data stripped to just what's useful for a proctor report
+  const faces = predictions.map(p => ({
+    probability: Array.isArray(p.probability) ? p.probability[0] : p.probability,
+    topLeft:     p.topLeft,
+    bottomRight: p.bottomRight,
+  }));
+
+  ipcRenderer.send('proctor-status', {
+    status,
+    faceCount,
+    faces,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+init().catch(err => {
+  ipcRenderer.send('proctor-error', { phase: 'init', message: err.message });
+});
+</script>
+
+</body>
+</html>

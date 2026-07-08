@@ -1,0 +1,76 @@
+{
+  "general": {
+    "windowTitle": "Secure Assessment Browser",
+    "fullscreen": true,
+    "kiosk": false,
+    "adminExitShortcut": "Ctrl+Alt+Q",
+    "refocusDelayMs": 200,
+    "logViolations": true
+  },
+  "exam": {
+    "allowedUrl": "http://localhost:3000",
+    "allowedDomains": [
+      "localhost",
+      "127.0.0.1"
+    ],
+    "allowedCDNs": [
+      "cdn.jsdelivr.net",
+      "fonts.googleapis.com",
+      "fonts.gstatic.com"
+    ]
+  },
+  "security": {
+    "processMonitoring": true,
+    "processCheckIntervalMs": 5000,
+    "blockMultipleDisplays": true,
+    "allowClipboard": false,
+    "displayCheckIntervalMs": 10000
+  },
+  "screenMonitoring": {
+    "enabled": true,
+    "intervalMs": 30000,
+    "thumbWidth": 1280,
+    "thumbHeight": 720,
+    "maxLocalFiles": 120,
+    "uploadToFirebase": true
+  },
+  "proctoring": {
+    "enabled": true,
+    "intervalMs": 5000
+  },
+  "networkGuard": {
+    "autoAllowSubdomains": true,
+    "injectCSP": true,
+    "stripHeaders": true,
+    "blockDataNav": true
+  },
+  "sync": {
+    "endpoint": null,
+    "apiKey": "",
+    "intervalMs": 30000,
+    "hmacSecret": "CHANGE-THIS-TO-A-STRONG-RANDOM-SECRET"
+  },
+  "firebase": {
+    "apiKey": "AIzaSyD3rZj6GNOiGU7qK16tQkinjteeYK7qn3w",
+    "authDomain": "safeeb-15248.firebaseapp.com",
+    "projectId": "safeeb-15248",
+    "storageBucket": "safeeb-15248.firebasestorage.app",
+    "messagingSenderId": "90017000003",
+    "appId": "1:90017000003:web:57bdaa52e02ed45eae42f6"
+  },
+  "riskScoring": {
+    "autoTerminate": false,
+    "maxScore": 150,
+    "decayEnabled": true,
+    "decayIntervalMs": 60000,
+    "decayPoints": 2,
+    "focusGraceMs": 2000,
+    "noFaceGraceCount": 2,
+    "thresholds": {
+      "LOW": 0,
+      "MEDIUM": 30,
+      "HIGH": 60,
+      "CRITICAL": 90
+    }
+  }
+}

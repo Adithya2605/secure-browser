@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Secure Exam Browser — Setup</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #07071a;
+      --card: rgba(255,255,255,0.035);
+      --border: rgba(255,255,255,0.09);
+      --accent: #818cf8;
+      --accent-d: #6366f1;
+      --purple: #8b5cf6;
+      --success: #34d399;
+      --warning: #fbbf24;
+      --error:   #f87171;
+      --text:    #e2e8f0;
+      --muted:   rgba(226,232,240,0.45);
+      --glow:    rgba(99,102,241,0.28);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ── Animated background orbs ─────────────────────────── */
+    .orb {
+      position: fixed; border-radius: 50%;
+      filter: blur(90px); opacity: 0.12; pointer-events: none; z-index: 0;
+    }
+    .orb1 { width:700px;height:700px; background:radial-gradient(#6366f1,transparent 70%);
+             top:-250px;left:-200px; animation:orb1 9s ease-in-out infinite; }
+    .orb2 { width:500px;height:500px; background:radial-gradient(#8b5cf6,transparent 70%);
+             bottom:-150px;right:-150px; animation:orb2 11s ease-in-out infinite; }
+    .orb3 { width:350px;height:350px; background:radial-gradient(#06b6d4,transparent 70%);
+             bottom:200px;left:80px; animation:orb3 13s ease-in-out infinite; }
+    @keyframes orb1{0%,100%{transform:translate(0,0)}50%{transform:translate(35px,22px)}}
+    @keyframes orb2{0%,100%{transform:translate(0,0)}50%{transform:translate(-25px,-32px)}}
+    @keyframes orb3{0%,100%{transform:translate(0,0)}50%{transform:translate(28px,-18px)}}
+
+    /* ── Top header bar ───────────────────────────────────── */
+    .header {
+      position: relative; z-index: 20;
+      height: 60px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px;
+      background: rgba(7,7,26,0.85);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+    }
+    .logo { display:flex;align-items:center;gap:10px;font-weight:700;font-size:.95rem; }
+    .logo-icon {
+      width:32px;height:32px;border-radius:8px;
+      background:linear-gradient(135deg,var(--accent-d),var(--purple));
+      display:flex;align-items:center;justify-content:center;
+    }
+    .logo-icon svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+    .header-title { font-size:.8rem; color:var(--muted); }
+
+    /* ── Step progress rail ───────────────────────────────── */
+    .progress-rail {
+      position: relative; z-index: 19;
+      height: 70px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(7,7,26,0.7);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      gap: 0;
+      padding: 0 24px;
+    }
+    .snode { display:flex;flex-direction:column;align-items:center;gap:3px;position:relative; }
+    .snode-circle {
+      width:30px;height:30px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-size:.72rem;font-weight:700;
+      transition:all .3s;z-index:1;
+    }
+    .snode-circle.done {
+      background:var(--success);color:#053d2a;
+      box-shadow:0 0 10px rgba(52,211,153,.4);
+    }
+    .snode-circle.active {
+      background:linear-gradient(135deg,var(--accent-d),var(--purple));color:#fff;
+      box-shadow:0 0 18px var(--glow);
+      animation:pstep 2s ease-in-out infinite;
+    }
+    .snode-circle.pending { background:rgba(255,255,255,.06);color:var(--muted);border:1px solid rgba(255,255,255,.1); }
+    @keyframes pstep{0%,100%{box-shadow:0 0 18px var(--glow)}50%{box-shadow:0 0 28px rgba(99,102,241,.55)}}
+    .snode-label{font-size:.58rem;color:var(--muted);white-space:nowrap;transition:color .3s;}
+    .snode-label.active{color:var(--accent);}
+    .snode-label.done{color:var(--success);}
+    .sconn{width:36px;height:1px;background:rgba(255,255,255,.1);margin-bottom:14px;}
+    .sconn.done{background:rgba(52,211,153,.35);}
+
+    /* ── Wizard body ──────────────────────────────────────── */
+    .wizard-body {
+      flex: 1; overflow-y: auto; overflow-x: hidden;
+      display: flex; align-items: flex-start; justify-content: center;
+      padding: 32px 20px 48px;
+      position: relative; z-index: 10;
+    }
+    .wizard-body::-webkit-scrollbar{width:4px;}
+    .wizard-body::-webkit-scrollbar-track{background:transparent;}
+    .wizard-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px;}
+
+    .steps-wrap { width:100%;max-width:560px;position:relative; }
+
+    /* ── Step panel card ──────────────────────────────────── */
+    .step-panel {
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 44px;
+      backdrop-filter: blur(22px);
+      box-shadow: 0 24px 64px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06);
+      position: absolute; top: 0; left: 0;
+      opacity: 0;
+      transform: translateX(60px);
+      transition: opacity .38s cubic-bezier(.4,0,.2,1), transform .38s cubic-bezier(.4,0,.2,1);
+      pointer-events: none;
+    }
+    .step-panel.active {
+      opacity:1;transform:translateX(0);pointer-events:all;
+      position:relative;
+    }
+    .step-panel.exit {
+      opacity:0;transform:translateX(-60px);
+    }
+
+    .step-icon-wrap {
+      width:72px;height:72px;border-radius:18px;
+      background:linear-gradient(135deg,rgba(99,102,241,.18),rgba(139,92,246,.18));
+      border:1px solid rgba(129,140,248,.3);
+      display:flex;align-items:center;justify-content:center;
+      margin-bottom:20px;
+    }
+    .step-icon-wrap svg{width:36px;height:36px;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+
+    .step-panel h2 {
+      font-size:1.55rem;font-weight:700;margin-bottom:8px;
+      background:linear-gradient(135deg,#e2e8f0 30%,#818cf8);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .step-panel .desc {
+      color:var(--muted);line-height:1.65;margin-bottom:28px;font-size:.9rem;
+    }
+
+    /* ── Buttons ──────────────────────────────────────────── */
+    .btn {
+      width:100%;padding:13px 20px;border-radius:12px;border:none;
+      font-size:.95rem;font-weight:600;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;gap:8px;
+      transition:all .2s;
+    }
+    .btn-primary {
+      background:linear-gradient(135deg,var(--accent-d),var(--purple));color:#fff;
+      box-shadow:0 4px 18px rgba(99,102,241,.3);
+    }
+    .btn-primary:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 24px rgba(99,102,241,.4);}
+    .btn-primary:active:not(:disabled){transform:translateY(0);}
+    .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
+    .btn-success{background:linear-gradient(135deg,#059669,var(--success));color:#fff;}
+    .btn-danger{background:linear-gradient(135deg,#dc2626,var(--error));color:#fff;}
+    .btn-outline{background:rgba(255,255,255,.05);color:var(--text);border:1px solid var(--border);}
+    .btn-outline:hover{background:rgba(255,255,255,.09);}
+    .btn + .btn { margin-top: 10px; }
+
+    /* ── Status boxes ────────────────────────────────────── */
+    .status-box {
+      padding:14px 16px;border-radius:12px;margin-bottom:20px;
+      display:flex;align-items:flex-start;gap:12px;font-size:.88rem;line-height:1.5;
+    }
+    .status-box.success{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);}
+    .status-box.error  {background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);}
+    .status-box.warning{background:rgba(251,191,36,.1); border:1px solid rgba(251,191,36,.3);}
+    .status-box.info   {background:rgba(129,140,248,.1);border:1px solid rgba(129,140,248,.3);}
+    .status-icon{font-size:1.1rem;flex-shrink:0;margin-top:1px;}
+
+    /* ── Camera preview ──────────────────────────────────── */
+    .cam-wrap {
+      width:100%;border-radius:12px;background:#000;
+      aspect-ratio:16/9;overflow:hidden;margin-bottom:18px;
+      position:relative;display:none;
+      border:1px solid rgba(255,255,255,.08);
+    }
+    .cam-wrap video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+    .cam-badge {
+      position:absolute;top:10px;right:10px;
+      background:rgba(52,211,153,.9);color:#053d2a;
+      padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:700;
+    }
+
+    /* ── Mic level bars ──────────────────────────────────── */
+    .mic-bars {
+      display:none;align-items:flex-end;gap:5px;height:56px;
+      justify-content:center;margin-bottom:20px;
+    }
+    .mic-bar{width:8px;border-radius:4px;background:var(--accent);min-height:4px;transition:height .08s;}
+
+    /* ── Screen info items ───────────────────────────────── */
+    .screen-items{display:flex;flex-direction:column;gap:10px;margin-bottom:24px;}
+    .screen-item {
+      display:flex;align-items:center;gap:12px;padding:13px 16px;
+      background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;
+    }
+    .screen-item-icon{
+      width:34px;height:34px;border-radius:9px;flex-shrink:0;
+      display:flex;align-items:center;justify-content:center;font-size:1rem;
+    }
+
+    /* ── Identity photo area ─────────────────────────────── */
+    .photo-row{display:flex;gap:14px;margin-bottom:20px;}
+    .photo-live,.photo-snap{
+      flex:1;border-radius:10px;overflow:hidden;
+      aspect-ratio:4/3;position:relative;
+    }
+    .photo-live{background:#111;border:1px solid rgba(255,255,255,.06);}
+    .photo-live video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+    .photo-snap{
+      background:rgba(255,255,255,.02);
+      border:1px dashed rgba(255,255,255,.13);
+      display:flex;align-items:center;justify-content:center;
+      color:var(--muted);font-size:.75rem;text-align:center;padding:8px;
+    }
+    .photo-snap img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0;}
+    canvas#shot-canvas{display:none;}
+
+    .form-row{display:flex;gap:12px;}
+    .form-group{flex:1;margin-bottom:14px;}
+    .form-group label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:6px;font-weight:500;}
+    .form-group input{
+      width:100%;padding:11px 14px;
+      background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:10px;
+      color:var(--text);font-size:.9rem;outline:none;transition:border-color .2s;
+    }
+    .form-group input:focus{border-color:var(--accent);}
+    .form-group input::placeholder{color:var(--muted);}
+
+    /* ── Security check list ─────────────────────────────── */
+    .check-list{display:flex;flex-direction:column;gap:9px;margin-bottom:22px;}
+    .check-item {
+      display:flex;align-items:center;gap:12px;padding:11px 15px;
+      background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;
+      opacity:0;transform:translateX(16px);transition:all .35s;
+    }
+    .check-item.visible{opacity:1;transform:translateX(0);}
+    .check-dot {
+      width:26px;height:26px;border-radius:50%;flex-shrink:0;
+      display:flex;align-items:center;justify-content:center;font-size:.8rem;
+    }
+    .check-dot.pass{background:rgba(52,211,153,.15);color:var(--success);}
+    .check-dot.fail{background:rgba(248,113,113,.15);color:var(--error);}
+    .check-dot.warn{background:rgba(251,191,36,.15);color:var(--warning);}
+    .check-dot.spin{background:rgba(129,140,248,.15);color:var(--accent);animation:rots 1s linear infinite;}
+    @keyframes rots{to{transform:rotate(360deg)}}
+    .check-text{flex:1;}
+    .check-actions{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+    .check-proc-row{
+      display:flex;align-items:center;justify-content:space-between;
+      gap:10px;padding:6px 10px;
+      background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.2);
+      border-radius:8px;
+    }
+    .check-proc-name{font-size:.8rem;color:var(--error);font-family:monospace;flex:1;}
+    .btn-kill{
+      padding:4px 12px;border-radius:7px;border:none;cursor:pointer;
+      font-size:.76rem;font-weight:700;white-space:nowrap;
+      background:linear-gradient(135deg,#dc2626,#f87171);color:#fff;
+      transition:all .18s;
+      display:flex;align-items:center;gap:5px;
+    }
+    .btn-kill:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 10px rgba(220,38,38,.4);}
+    .btn-kill:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+    .btn-kill.killed{
+      background:linear-gradient(135deg,#059669,#34d399);pointer-events:none;
+    }
+
+    /* ── Permission guide panel ──────────────────────────── */
+    .perm-guide {
+      border-radius: 14px;
+      border: 1px solid rgba(251,191,36,.35);
+      background: rgba(251,191,36,.06);
+      padding: 18px 18px 14px;
+      margin-bottom: 20px;
+    }
+    .perm-guide-title {
+      display:flex;align-items:center;gap:8px;
+      font-weight:700;font-size:.92rem;color:var(--warning);margin-bottom:14px;
+    }
+    .perm-guide-title svg{flex-shrink:0;stroke:var(--warning);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+    .perm-steps { display:flex;flex-direction:column;gap:9px;margin-bottom:12px; }
+    .perm-step {
+      display:flex;align-items:flex-start;gap:10px;
+      font-size:.83rem;line-height:1.55;color:var(--text);
+    }
+    .perm-step-num {
+      width:22px;height:22px;border-radius:50%;flex-shrink:0;
+      background:rgba(251,191,36,.2);color:var(--warning);
+      display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;margin-top:1px;
+    }
+    .perm-step strong { color:#fff; }
+    .perm-step code {
+      background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px;
+      font-size:.8rem;color:var(--accent);
+    }
+    .perm-divider{height:1px;background:rgba(255,255,255,.06);margin:10px 0;}
+    .check-label{font-size:.88rem;font-weight:500;}
+    .check-msg{font-size:.75rem;color:var(--muted);margin-top:2px;}
+
+    /* ── Lockdown / Launch animations ───────────────────── */
+    .lock-center{text-align:center;padding:16px 0;}
+    .lock-ring {
+      width:96px;height:96px;border-radius:24px;
+      background:linear-gradient(135deg,rgba(99,102,241,.2),rgba(139,92,246,.2));
+      border:1px solid rgba(129,140,248,.3);
+      display:flex;align-items:center;justify-content:center;
+      margin:0 auto 22px;animation:lockpulse 2s ease-in-out infinite;
+    }
+    .lock-ring svg{width:44px;height:44px;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+    @keyframes lockpulse{0%,100%{box-shadow:0 0 0 0 rgba(99,102,241,.3)}50%{box-shadow:0 0 0 20px rgba(99,102,241,0)}}
+
+    .prog-wrap{width:100%;height:5px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden;margin:16px 0;}
+    .prog-fill{height:100%;background:linear-gradient(90deg,var(--accent-d),var(--purple));border-radius:3px;width:0%;transition:width .25s ease;}
+
+    .spin-ring{
+      width:52px;height:52px;border:3px solid rgba(129,140,248,.2);
+      border-top-color:var(--accent);border-radius:50%;
+      margin:18px auto;animation:rots 1s linear infinite;
+    }
+
+    /* ── Fullscreen visual ───────────────────────────────── */
+    .fs-visual{
+      border:2px solid rgba(129,140,248,.25);border-radius:14px;
+      padding:28px;text-align:center;margin-bottom:22px;
+      background:rgba(99,102,241,.04);
+    }
+    .fs-visual svg{width:52px;height:52px;stroke:var(--accent);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;margin-bottom:12px;}
+
+    .hidden{display:none!important;}
+    .mt-2{margin-top:8px;}
+    .mt-3{margin-top:12px;}
+    .text-sm{font-size:.82rem;}
+    .text-muted{color:var(--muted);}
+    .text-success{color:var(--success);}
+    .text-error{color:var(--error);}
+    .text-center{text-align:center;}
+    .bold{font-weight:600;}
+  </style>
+</head>
+<body>
+
+<div class="orb orb1"></div>
+<div class="orb orb2"></div>
+<div class="orb orb3"></div>
+
+<!-- ── Header ─────────────────────────────────────────── -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    </div>
+    Secure Exam Browser
+  </div>
+  <div class="header-title">Pre-Exam Setup — Step <span id="step-num">1</span> of 8</div>
+</header>
+
+<!-- ── Progress rail ──────────────────────────────────── -->
+<div class="progress-rail" id="progress-rail">
+  <!-- JS renders nodes -->
+</div>
+
+<!-- ── Wizard body ────────────────────────────────────── -->
+<div class="wizard-body">
+  <div class="steps-wrap" id="steps-wrap">
+
+    <!-- ═══════════════════════════════════════════════════
+         STEP 1 — Camera Permission
+    ═══════════════════════════════════════════════════════ -->
+    <div class="step-panel active" id="step-1">
+      <div class="step-icon-wrap">
+        <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+      </div>
+      <h2>Camera Access Required</h2>
+      <p class="desc">The exam requires access to your camera for identity verification and proctoring. Please allow camera access when prompted.</p>
+
+      <div class="cam-wrap" id="cam1-wrap">
+        <video id="cam1-video" autoplay muted playsinline></video>
+        <div class="cam-badge">● LIVE</div>
+      </div>
+
+      <div id="cam1-status" class="status-box info">
+        <span class="status-icon">📷</span>
+        <div>Click <strong>Allow Camera Access</strong> to grant access. A system dialog may appear asking for permission.</div>
+      </div>
+
+      <!-- Permission fix guide — shown only when access is blocked -->
+      <div class="perm-guide hidden" id="cam1-guide">
+        <div class="perm-guide-title">
+          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Camera access is blocked — follow these steps to fix it
+        </div>
+        <div class="perm-steps">
+          <div class="perm-step">
+            <div class="perm-step-num">1</div>
+            <div>Look for the <strong>🔒 lock / camera icon</strong> in the top-left corner of this window's title bar or address area and click it.</div>
+          </div>
+          <div class="perm-step">
+            <div class="perm-step-num">2</div>
+            <div>Find <strong>Camera</strong> in the permissions list and change it from <code>Block</code> to <code>Allow</code>.</div>
+          </div>
+          <div class="perm-step">
+            <div class="perm-step-num">3</div>
+            <div>If no prompt appeared, open <strong>Windows Settings</strong> → <code>Privacy &amp; security</code> → <code>Camera</code> and make sure this app is allowed.</div>
+          </div>
+          <div class="perm-step">
+            <div class="perm-step-num">4</div>
+            <div>Click <strong>Try Again</strong> below after granting access.</div>
+          </div>
+        </div>
+        <button class="btn btn-outline" style="margin-bottom:0;font-size:.82rem;padding:9px 14px;" onclick="openSettings('camera')">
+          ⚙️ &nbsp;Open Windows Camera Settings
+        </button>
+      </div>
+
+      <button class="btn btn-primary" id="cam1-btn" onclick="requestCamera()">
+        <svg viewBox="0 0 24 24" width="18" height="18" style="stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+        Allow Camera Access
+      </button>
+      <button class="btn btn-primary hidden" id="cam1-cont" onclick="goTo(2)">Continue →</button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         STEP 2 — Microphone Permission
+    ═══════════════════════════════════════════════════════ -->
+    <div class="step-panel" id="step-2">
+      <div class="step-icon-wrap">
+        <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </div>
+      <h2>Microphone Access Required</h2>
+      <p class="desc">Microphone access is needed for audio monitoring during the exam. Please allow microphone access when prompted.</p>
+
+      <div class="mic-bars" id="mic-bars">
+        <div class="mic-bar" style="height:8px" id="mb1"></div>
+        <div class="mic-bar" style="height:8px" id="mb2"></div>
+        <div class="mic-bar" style="height:8px" id="mb3"></div>
+        <div class="mic-bar" style="height:8px" id="mb4"></div>
+        <div class="mic-bar" style="height:8px" id="mb5"></div>
+        <div class="mic-bar" style="height:8px" id="mb6"></div>
+        <div class="mic-bar" style="height:8px" id="mb7"></div>
+        <div class="mic-bar" style="height:8px" id="mb8"></div>
+        <div class="mic-bar" style="height:8px" id="mb9"></div>
+        <div class="mic-bar" style="height:8px" id="mb10"></div>
+        <div class="mic-bar" style="height:8px" id="mb11"></div>
+        <div class="mic-bar" style="height:8px" id="mb12"></div>
+      </div>
+
+      <div id="mic-status" class="status-box info">
+        <span class="status-icon">🎤</span>
+        <div>Click <strong>Allow Microphone Access</strong> to grant access.</div>
+      </div>
+
+      <!-- Permission fix guide — shown only when access is blocked -->
+      <div class="perm-guide hidden" id="mic-guide">
+        <div class="perm-guide-title">
+          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Microphone access is blocked — follow these steps to fix it
+        </div>
+        <div class="perm-steps">
+          <div class="perm-step">
+            <div class="perm-step-num">1</div>
+            <div>Look for the <strong>🔒 lock / mic icon</strong> in the top-left corner of this window's title bar or address area and click it.</div>
+          </div>
+          <div class="perm-step">
+            <div class="perm-step-num">2</div>
+            <div>Find <strong>Microphone</strong> in the permissions list and change it from <code>Block</code> to <code>Allow</code>.</div>
+          </div>
+          <div class="perm-step">
+            <div class="perm-step-num">3</div>
+            <div>If no prompt appeared, open <strong>Windows Settings</strong> → <code>Privacy &amp; security</code> → <code>Microphone</code> and make sure this app is allowed.</div>
+          </div>
+          <div class="perm-step">
+            <div class="perm-step-num">4</div>
+            <div>Click <strong>Try Again</strong> below after granting access.</div>
+          </div>
+        </div>
+        <button class="btn btn-outline" style="margin-bottom:0;font-size:.82rem;padding:9px 14px;" onclick="openSettings('microphone')">
+          ⚙️ &nbsp;Open Windows Microphone Settings
+        </button>
+      </div>
+
+      <button class="btn btn-primary" id="mic-btn" onclick="requestMic()">
+        <svg viewBox="0 0 24 24" width="18" height="18" style="stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+        Allow Microphone Access
+      </button>
+      <button class="btn btn-primary hidden" id="mic-cont" onclick="goTo(3)">Continue →</button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         STEP 3 — Screen Recording Policy
+    ═══════════════════════════════════════════════════════ -->
+    <div class="step-panel" id="step-3">
+      <div class="step-icon-wrap">
+        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </div>
+      <h2>Screen Security Policy</h2>
+      <p class="desc">Screen recording and sharing by you are blocked for exam integrity. The exam platform's AI proctoring monitors your screen automatically.</p>
+
+      <div class="screen-items">
+        <div class="screen-item">
+          <div class="screen-item-icon" style="background:rgba(248,113,113,.12);color:var(--error)">🚫</div>
+          <div>
+            <div class="bold text-sm">Screen Recording Disabled</div>
+            <div class="text-sm text-muted mt-2">getDisplayMedia() and browser screen capture APIs are blocked</div>
+          </div>
+        </div>
+        <div class="screen-item">
+          <div class="screen-item-icon" style="background:rgba(248,113,113,.12);color:var(--error)">🚫</div>
+          <div>
+            <div class="bold text-sm">Screen Sharing Disabled</div>
+            <div class="text-sm text-muted mt-2">Remote screen sharing and desktop capture by you are denied</div>
+          </div>
+        </div>
+        <div class="screen-item">
+          <div class="screen-item-icon" style="background:rgba(52,211,153,.12);color:var(--success)">✓</div>
+          <div>
+            <div class="bold text-sm">Camera Proctoring Active</div>
+            <div class="text-sm text-muted mt-2">Your webcam feed is monitored for face presence</div>
+          </div>
+        </div>
+        <div class="screen-item">
+          <div class="screen-item-icon" style="background:rgba(52,211,153,.12);color:var(--success)">🖥️</div>
+          <div>
+            <div class="bold text-sm">AI Screen Monitoring Active</div>
+            <div class="text-sm text-muted mt-2">Periodic screenshots are captured by the exam platform for AI review</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-box info">
+        <span class="status-icon">ℹ️</span>
+        <div>Screenshots of your screen are taken every 30 seconds and reviewed by the AI proctoring system. Attempting to share your screen externally will be logged as a violation. By proceeding, you acknowledge this policy.</div>
+      </div>
+
+      <button class="btn btn-primary" onclick="confirmScreen()">I Understand — Continue →</button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         STEP 4 — Fullscreen Mode
+    ═══════════════════════════════════════════════════════ -->
+    <div class="step-panel" id="step-4">
+      <div class="step-icon-wrap">
+        <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+      </div>
+      <h2>Enter Fullscreen Mode</h2>
+      <p class="desc">The exam runs in fullscreen to prevent distraction and ensure a secure environment. Exiting fullscreen will be logged as a violation.</p>
+
+      <div class="fs-visual" id="fs-visual">
+        <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+        <div class="bold" id="fs-hint">Click the button below to enter fullscreen</div>
+        <div class="text-sm text-muted mt-2">Your screen will expand to fill the entire display</div>
+      </div>
+
+      <div id="fs-status" class="status-box info">
+        <span class="status-icon">⛶</span>
+        <div>Fullscreen mode is required for the exam. The window will expand immediately.</div>
+      </div>
+
+      <button class="btn btn-primary" id="fs-btn" onclick="enterFullscreen()">
+        <svg viewBox="0 0 24 24" width="18" height="18" style="stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+        Enter Fullscreen
+      </button>
+      <button class="btn btn-primary hidden" id="fs-cont" onclick="goTo(5)">Continue →</button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         STEP 5 — Identity Verification
+    ═══════════════════════════════════════════════════════ -->
+    <div class="step-panel" id="step-5">
+      <div class="step-icon-wrap">
+        <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <h2>Verify Your Identity</h2>
+      <p class="desc">Take a photo and enter your details to verify your identity before the exam begins.</p>
+
+      <div class="photo-row">
+        <div class="photo-live">
+          <video id="id-video" autoplay muted playsinline></video>
+        </div>
+        <div class="photo-snap" id="photo-snap">
+          <span id="snap-placeholder">📸<br>Photo will appear here</span>
+          <img id="snap-img" class="hidden" alt="Captured photo" />
+        </div>
+      </div>
+
+      <canvas id="shot-canvas" width="320" height="240"></canvas>
+
+      <button class="btn btn-outline mt-2" id="snap-btn" onclick="takePhoto()" style="margin-bottom:18px;">
+        📷 &nbsp;Take Photo
+      </button>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input type="text" id="id-name" placeholder="John Smith" oninput="checkIdForm()" />
+        </div>
+        <div class="form-group">
+          <label>Student / Exam ID *</label>
+          <input type="text" id="id-exam" placeholder="STU-123456" oninput="checkIdForm()" />
+        </div>
+      </div>
+
+      <div id="id-status" class="status-box warning hidden">
+        <span class="status-icon">⚠️</span>
+        <div id="id-status-msg">Please take a photo and fill in all fields.</div>
+      </div>
+
+      <button class="btn btn-primary" id="id-submit" onclick="submitIdentity()" disabled>
+        Submit Identity &amp; Continue →
+      </button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         STEP 6 — System Security Check
+    ═══════════════════════════════════════════════════════ -->
+    <div class="step-panel" id="step-6">
+      <div class="step-icon-wrap">
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <h2>System Security Check</h2>
+      <p class="desc">Running pre-exam security checks on your system. Please wait…</p>
+
+      <div class="check-list" id="check-list">
+        <!-- JS renders checks -->
+      </div>
+
+      <div id="sec-status" class="status-box info hidden"></div>
+
+      <button class="btn btn-primary hidden" id="sec-cont" onclick="goTo(7)">All Checks Passed — Continue →</button>
+      <button class="btn btn-danger hidden" id="sec-retry" onclick="runSecurityCheck()">↺ &nbsp;Retry</button>
+      <button class="btn btn-outline hidden" id="sec-warn-cont" onclick="goTo(7)">Continue with Warnings →</button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         STEP 7 — Lockdown Mode
+    ═══════════════════════════════════════════════════════ -->
+    <div class="step-panel" id="step-7">
+      <div class="step-icon-wrap">
+        <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <h2>Activating Secure Mode</h2>
+      <p class="desc">Enabling all security controls. Focus guard, process monitoring, and proctoring are being activated.</p>
+
+      <div class="lock-center">
+        <div class="lock-ring" id="lock-ring">
+          <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <div class="bold" id="lock-status-text">Initialising security controls…</div>
+        <div class="text-sm text-muted mt-2" id="lock-sub">Please wait, do not close this window</div>
+      </div>
+
+      <div class="prog-wrap"><div class="prog-fill" id="lock-prog"></div></div>
+
+      <div id="lock-items" style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px;"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         STEP 8 — Launch Exam
+    ═══════════════════════════════════════════════════════ -->
+    <div class="step-panel" id="step-8">
+      <div class="step-icon-wrap">
+        <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </div>
+      <h2>Launching Exam</h2>
+      <p class="desc">All checks passed. Your secure exam environment is ready. The exam will start in a moment.</p>
+
+      <div class="text-center">
+        <div class="spin-ring"></div>
+        <div class="bold" id="launch-text">Loading exam…</div>
+        <div class="text-sm text-muted mt-2">Please remain in front of the camera</div>
+      </div>
+
+      <div class="prog-wrap" style="margin-top:24px;"><div class="prog-fill" id="launch-prog"></div></div>
+    </div>
+
+  </div><!-- /steps-wrap -->
+</div><!-- /wizard-body -->
+
+<script>
+'use strict';
+
+// ─── Step metadata ─────────────────────────────────────────────────────────────
+const STEPS = [
+  { id:1, label:'Camera' },
+  { id:2, label:'Mic' },
+  { id:3, label:'Screen' },
+  { id:4, label:'Fullscreen' },
+  { id:5, label:'Identity' },
+  { id:6, label:'Security' },
+  { id:7, label:'Lockdown' },
+  { id:8, label:'Launch' },
+];
+
+let currentStep = 1;
+let cameraStream = null;
+let micStream    = null;
+let photoDataUrl = null;
+let micAnimFrame = null;
+
+// ─── Build progress rail ───────────────────────────────────────────────────────
+function buildRail() {
+  const rail = document.getElementById('progress-rail');
+  rail.innerHTML = '';
+  STEPS.forEach((s, i) => {
+    const node = document.createElement('div');
+    node.className = 'snode';
+    node.id = 'snode-' + s.id;
+
+    const circle = document.createElement('div');
+    circle.className = 'snode-circle ' + stateClass(s.id);
+    circle.textContent = s.id < currentStep ? '✓' : s.id;
+    node.appendChild(circle);
+
+    const label = document.createElement('div');
+    label.className = 'snode-label ' + stateClass(s.id);
+    label.textContent = s.label;
+    node.appendChild(label);
+
+    rail.appendChild(node);
+
+    if (i < STEPS.length - 1) {
+      const conn = document.createElement('div');
+      conn.className = 'sconn' + (s.id < currentStep ? ' done' : '');
+      conn.id = 'sconn-' + s.id;
+      rail.appendChild(conn);
+    }
+  });
+}
+
+function stateClass(id) {
+  if (id < currentStep)  return 'done';
+  if (id === currentStep) return 'active';
+  return 'pending';
+}
+
+// ─── Step navigation ───────────────────────────────────────────────────────────
+function goTo(n) {
+  const prev = document.getElementById('step-' + currentStep);
+  prev.classList.add('exit');
+  setTimeout(() => {
+    prev.classList.remove('active', 'exit');
+    currentStep = n;
+    document.getElementById('step-num').textContent = n;
+    const next = document.getElementById('step-' + n);
+    next.classList.add('active');
+    buildRail();
+    onStepEnter(n);
+    // Scroll to top
+    document.querySelector('.wizard-body').scrollTop = 0;
+  }, 380);
+}
+
+function onStepEnter(n) {
+  if (n === 2)  setupMicVideo();
+  if (n === 5)  attachCamToIdentity();
+  if (n === 6)  runSecurityCheck();
+  if (n === 7)  runLockdown();
+  if (n === 8)  runLaunch();
+}
+
+// ─── STEP 1 — Camera ──────────────────────────────────────────────────────────
+async function requestCamera() {
+  const btn    = document.getElementById('cam1-btn');
+  const status = document.getElementById('cam1-status');
+  const guide  = document.getElementById('cam1-guide');
+  const wrap   = document.getElementById('cam1-wrap');
+
+  // Hide any previous guide
+  guide.classList.add('hidden');
+  btn.disabled = true;
+  btn.innerHTML = '<span style="border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;width:16px;height:16px;animation:rots 1s linear infinite;display:inline-block"></span> &nbsp;Requesting…';
+
+  // Ask main to allow media permissions
+  if (window.sebWizard) await window.sebWizard.enableMediaPermissions();
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 1280, height: 720, facingMode: 'user' },
+      audio: false,
+    });
+    cameraStream = stream;
+    const video = document.getElementById('cam1-video');
+    video.srcObject = stream;
+    wrap.style.display = 'block';
+
+    status.className = 'status-box success';
+    status.innerHTML = '<span class="status-icon">✓</span><div><strong>Camera access granted!</strong> Live preview is active.</div>';
+
+    btn.classList.add('hidden');
+    document.getElementById('cam1-cont').classList.remove('hidden');
+  } catch (err) {
+    const isDenied   = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
+    const isNoDevice = err.name === 'NotFoundError'   || err.name === 'DevicesNotFoundError';
+
+    if (isDenied) {
+      // Show the step-by-step permission fix guide
+      status.className = 'status-box warning';
+      status.innerHTML = '<span class="status-icon">⚠️</span><div><strong>Camera access was denied.</strong> Follow the steps below to grant permission, then click Try Again.</div>';
+      guide.classList.remove('hidden');
+      btn.disabled = false;
+      btn.innerHTML = '↺ &nbsp;Try Again';
+    } else if (isNoDevice) {
+      status.className = 'status-box error';
+      status.innerHTML = '<span class="status-icon">✗</span><div><strong>No camera found.</strong> Please connect a webcam and click Retry.</div>';
+      btn.disabled = false;
+      btn.innerHTML = '↺ &nbsp;Retry';
+    } else {
+      status.className = 'status-box error';
+      status.innerHTML = `<span class="status-icon">✗</span><div><strong>Could not access camera.</strong> ${err.message}</div>`;
+      btn.disabled = false;
+      btn.innerHTML = '↺ &nbsp;Retry Camera Access';
+    }
+  }
+}
+
+// ─── STEP 2 — Microphone ──────────────────────────────────────────────────────
+function setupMicVideo() { /* mic setup is lazy on button press */ }
+
+async function requestMic() {
+  const btn    = document.getElementById('mic-btn');
+  const status = document.getElementById('mic-status');
+  const guide  = document.getElementById('mic-guide');
+
+  // Hide any previous guide
+  guide.classList.add('hidden');
+  btn.disabled = true;
+  btn.innerHTML = '<span style="border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;width:16px;height:16px;animation:rots 1s linear infinite;display:inline-block"></span> &nbsp;Requesting…';
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    micStream = stream;
+
+    // Audio level visualiser
+    const ctx      = new AudioContext();
+    const src      = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 64;
+    src.connect(analyser);
+    const data  = new Uint8Array(analyser.frequencyBinCount);
+    const bars  = Array.from({ length: 12 }, (_, i) => document.getElementById('mb' + (i + 1)));
+    const micBarsEl = document.getElementById('mic-bars');
+    micBarsEl.style.display = 'flex';
+
+    function animMic() {
+      analyser.getByteFrequencyData(data);
+      bars.forEach((b, i) => {
+        const raw = data[Math.floor(i * data.length / 12)] / 255;
+        b.style.height = Math.max(4, raw * 52) + 'px';
+        b.style.opacity = 0.4 + raw * 0.6;
+      });
+      micAnimFrame = requestAnimationFrame(animMic);
+    }
+    animMic();
+
+    status.className = 'status-box success';
+    status.innerHTML = '<span class="status-icon">✓</span><div><strong>Microphone access granted!</strong> Audio levels shown above.</div>';
+    btn.classList.add('hidden');
+    document.getElementById('mic-cont').classList.remove('hidden');
+  } catch (err) {
+    const isDenied   = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
+    const isNoDevice = err.name === 'NotFoundError'   || err.name === 'DevicesNotFoundError';
+
+    if (isDenied) {
+      status.className = 'status-box warning';
+      status.innerHTML = '<span class="status-icon">⚠️</span><div><strong>Microphone access was denied.</strong> Follow the steps below to grant permission, then click Try Again.</div>';
+      guide.classList.remove('hidden');
+      btn.disabled = false;
+      btn.innerHTML = '↺ &nbsp;Try Again';
+    } else if (isNoDevice) {
+      status.className = 'status-box error';
+      status.innerHTML = '<span class="status-icon">✗</span><div><strong>No microphone found.</strong> Please connect a microphone and click Retry.</div>';
+      btn.disabled = false;
+      btn.innerHTML = '↺ &nbsp;Retry';
+    } else {
+      status.className = 'status-box error';
+      status.innerHTML = `<span class="status-icon">✗</span><div><strong>Could not access microphone.</strong> ${err.message}</div>`;
+      btn.disabled = false;
+      btn.innerHTML = '↺ &nbsp;Retry Microphone Access';
+    }
+  }
+}
+
+// ─── Permission guide helper — open Windows Privacy Settings ─────────────────
+async function openSettings(type) {
+  if (window.sebWizard && window.sebWizard.openPrivacySettings) {
+    await window.sebWizard.openPrivacySettings(type).catch(() => {});
+  }
+}
+
+// ─── STEP 3 — Screen policy ────────────────────────────────────────────────────
+async function confirmScreen() {
+  if (window.sebWizard) await window.sebWizard.confirmScreenPolicy();
+  goTo(4);
+}
+
+// ─── STEP 4 — Fullscreen ──────────────────────────────────────────────────────
+async function enterFullscreen() {
+  const btn    = document.getElementById('fs-btn');
+  const status = document.getElementById('fs-status');
+
+  btn.disabled = true;
+  btn.innerHTML = 'Entering fullscreen…';
+
+  try {
+    let ok = false;
+    if (window.sebWizard) {
+      const result = await window.sebWizard.enterFullscreen();
+      ok = result && result.ok;
+    } else {
+      // Fallback: browser fullscreen API (dev mode)
+      await document.documentElement.requestFullscreen();
+      ok = !!document.fullscreenElement;
+    }
+
+    if (!ok) {
+      throw new Error('Fullscreen request was sent but the window did not enter fullscreen. Please try again.');
+    }
+
+    const visual   = document.getElementById('fs-visual');
+    visual.style.borderColor = 'rgba(52,211,153,.4)';
+    visual.style.background  = 'rgba(52,211,153,.06)';
+    visual.querySelector('svg').style.stroke = 'var(--success)';
+    document.getElementById('fs-hint').innerHTML = '<span style="color:var(--success)">✓ Fullscreen active</span>';
+
+    status.className = 'status-box success';
+    status.innerHTML = '<span class="status-icon">✓</span><div><strong>Fullscreen mode enabled.</strong> Do not exit fullscreen during the exam.</div>';
+
+    btn.classList.add('hidden');
+    document.getElementById('fs-cont').classList.remove('hidden');
+  } catch (err) {
+    status.className = 'status-box error';
+    status.innerHTML = `<span class="status-icon">✗</span><div>Could not enter fullscreen: ${err.message}</div>`;
+    btn.disabled = false;
+    btn.innerHTML = '↺ &nbsp;Retry Fullscreen';
+  }
+}
+
+// ─── STEP 5 — Identity ────────────────────────────────────────────────────────
+function attachCamToIdentity() {
+  const video = document.getElementById('id-video');
+  if (cameraStream) {
+    video.srcObject = cameraStream;
+  } else {
+    // Camera was not granted — try again
+    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+      .then(s => { cameraStream = s; video.srcObject = s; })
+      .catch(() => {});
+  }
+}
+
+function takePhoto() {
+  const video  = document.getElementById('id-video');
+  const canvas = document.getElementById('shot-canvas');
+  const img    = document.getElementById('snap-img');
+  const placeholder = document.getElementById('snap-placeholder');
+  const ctx    = canvas.getContext('2d');
+
+  canvas.width  = video.videoWidth  || 320;
+  canvas.height = video.videoHeight || 240;
+
+  // Mirror to match what user sees
+  ctx.save();
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0);
+  ctx.restore();
+
+  photoDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  img.src      = photoDataUrl;
+  img.classList.remove('hidden');
+  placeholder.classList.add('hidden');
+
+  // Flash effect
+  const snap = document.getElementById('photo-snap');
+  snap.style.border = '2px solid rgba(52,211,153,.6)';
+  setTimeout(() => { snap.style.border = '1px dashed rgba(255,255,255,.13)'; }, 600);
+
+  checkIdForm();
+}
+
+function checkIdForm() {
+  const name   = document.getElementById('id-name').value.trim();
+  const examId = document.getElementById('id-exam').value.trim();
+  const btn    = document.getElementById('id-submit');
+  btn.disabled = !(name && examId && photoDataUrl);
+}
+
+async function submitIdentity() {
+  const name    = document.getElementById('id-name').value.trim();
+  const examId  = document.getElementById('id-exam').value.trim();
+  const btn     = document.getElementById('id-submit');
+  const status  = document.getElementById('id-status');
+
+  if (!name || !examId || !photoDataUrl) {
+    status.classList.remove('hidden');
+    status.className = 'status-box warning';
+    document.getElementById('id-status-msg').textContent = 'Please take a photo and fill in all required fields.';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    if (window.sebWizard) {
+      await window.sebWizard.submitIdentity({ name, examId, photoDataUrl });
+    }
+    goTo(6);
+  } catch (err) {
+    status.classList.remove('hidden');
+    status.className = 'status-box error';
+    document.getElementById('id-status-msg').textContent = 'Error saving identity: ' + err.message;
+    btn.disabled = false;
+    btn.textContent = 'Submit Identity & Continue →';
+  }
+}
+
+// ─── STEP 6 — Security Check ──────────────────────────────────────────────────
+async function runSecurityCheck() {
+  const list    = document.getElementById('check-list');
+  const secStat = document.getElementById('sec-status');
+  const cont    = document.getElementById('sec-cont');
+  const retry   = document.getElementById('sec-retry');
+  const warnCont = document.getElementById('sec-warn-cont');
+
+  list.innerHTML = '';
+  secStat.classList.add('hidden');
+  cont.classList.add('hidden');
+  retry.classList.add('hidden');
+  warnCont.classList.add('hidden');
+
+  // Placeholder items while loading
+  const pending = [
+    { label: 'Suspicious Applications',  id: 'proc' },
+    { label: 'Display Configuration',    id: 'disp' },
+    { label: 'Network Connectivity',     id: 'net'  },
+    { label: 'Camera Access',            id: 'cam'  },
+    { label: 'Microphone Access',        id: 'mic'  },
+  ];
+
+  pending.forEach((p, i) => {
+    const el = document.createElement('div');
+    el.className = 'check-item';
+    el.id = 'ci-' + p.id;
+    el.innerHTML = `
+      <div class="check-dot spin">↻</div>
+      <div class="check-text">
+        <div class="check-label">${p.label}</div>
+        <div class="check-msg">Checking…</div>
+      </div>`;
+    list.appendChild(el);
+    setTimeout(() => el.classList.add('visible'), i * 120);
+  });
+
+  // Call main process for checks
+  let result = { checks: [], allPassed: true };
+  try {
+    if (window.sebWizard) {
+      result = await window.sebWizard.runSecurityCheck();
+    } else {
+      // Dev fallback
+      await new Promise(r => setTimeout(r, 1800));
+      result = {
+        allPassed: true,
+        checks: [
+          { id:'proc', label:'Suspicious Applications', passed:true,  message:'No suspicious processes detected' },
+          { id:'disp', label:'Display Configuration',   passed:true,  message:'Single display detected' },
+          { id:'net',  label:'Network Connectivity',    passed:true,  message:'Backend reachable' },
+          { id:'cam',  label:'Camera Access',           passed:true,  message:'Camera verified' },
+          { id:'mic',  label:'Microphone Access',       passed:true,  message:'Microphone verified' },
+        ],
+      };
+    }
+  } catch (err) {
+    result = {
+      allPassed: false,
+      checks: pending.map(p => ({
+        id: p.id, label: p.label, passed: false, message: 'Check failed: ' + err.message,
+      })),
+    };
+  }
+
+  // Animate results in
+  result.checks.forEach((check, i) => {
+    setTimeout(() => {
+      const el = document.getElementById('ci-' + check.id) || list.children[i];
+      if (!el) return;
+      const dot   = el.querySelector('.check-dot');
+      const label = el.querySelector('.check-label');
+      const msg   = el.querySelector('.check-msg');
+
+      if (check.passed === true) {
+        dot.className = 'check-dot pass'; dot.textContent = '✓';
+      } else if (check.passed === 'warn') {
+        dot.className = 'check-dot warn'; dot.textContent = '⚠';
+      } else {
+        dot.className = 'check-dot fail'; dot.textContent = '✗';
+      }
+      if (label) label.textContent = check.label;
+
+      // For the process check, parse the names and build per-process close buttons
+      if (check.id === 'proc' && check.passed === false && msg) {
+        const rawMsg = check.message || '';
+        // Message format: "Please close: foo.exe, bar.exe"
+        const afterColon = rawMsg.includes(':') ? rawMsg.split(':').slice(1).join(':') : rawMsg;
+        const procNames = afterColon.split(',').map(s => s.trim()).filter(Boolean);
+
+        if (procNames.length > 0) {
+          msg.textContent = 'Click \"Close\" next to each app, then hit Retry:';
+          // Build per-process rows with close buttons
+          const actions = document.createElement('div');
+          actions.className = 'check-actions';
+          procNames.forEach(name => {
+            const row = document.createElement('div');
+            row.className = 'check-proc-row';
+            row.id = 'proc-row-' + name.replace(/[^\w]/g, '_');
+            row.innerHTML = `
+              <span class="check-proc-name">⚠ ${name}</span>
+              <button class="btn-kill" id="kill-btn-${name.replace(/[^\w]/g, '_')}" onclick="killProc(this, '${name.replace(/'/g, "\\'")}')"
+                title="Force-close ${name}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+                Close App
+              </button>`;
+            actions.appendChild(row);
+          });
+          el.querySelector('.check-text').appendChild(actions);
+        } else {
+          if (msg) msg.textContent = check.message || '';
+        }
+      } else {
+        if (msg) msg.textContent = check.message || '';
+      }
+    }, 300 + i * 250);
+  });
+
+  const totalDelay = 300 + result.checks.length * 250 + 200;
+  setTimeout(() => {
+    const errors   = result.checks.filter(c => c.passed === false);
+    const warnings = result.checks.filter(c => c.passed === 'warn');
+
+    if (errors.length === 0 && warnings.length === 0) {
+      secStat.className = 'status-box success';
+      secStat.innerHTML = '<span class="status-icon">✓</span><div><strong>All security checks passed.</strong> Your system is ready for the exam.</div>';
+      secStat.classList.remove('hidden');
+      cont.classList.remove('hidden');
+    } else if (errors.length === 0) {
+      secStat.className = 'status-box warning';
+      secStat.innerHTML = `<span class="status-icon">⚠️</span><div><strong>${warnings.length} warning(s) detected.</strong> You may still proceed but violations will be logged.</div>`;
+      secStat.classList.remove('hidden');
+      warnCont.classList.remove('hidden');
+      retry.classList.remove('hidden');
+    } else {
+      secStat.className = 'status-box error';
+      secStat.innerHTML = `<span class="status-icon">✗</span><div><strong>${errors.length} check(s) failed.</strong> Please resolve the issues above and retry.</div>`;
+      secStat.classList.remove('hidden');
+      retry.classList.remove('hidden');
+    }
+  }, totalDelay);
+}
+
+// ─── Kill a single suspicious process (called by Close App buttons) ─────────
+async function killProc(btn, processName) {
+  btn.disabled = true;
+  const origHTML = btn.innerHTML;
+  btn.innerHTML = '<span style="border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;width:11px;height:11px;animation:rots .8s linear infinite;display:inline-block"></span> Closing…';
+
+  try {
+    let result = { ok: false };
+    if (window.sebWizard && window.sebWizard.killProcess) {
+      result = await window.sebWizard.killProcess(processName);
+    }
+    if (result.ok) {
+      btn.className = 'btn-kill killed';
+      btn.innerHTML = '✓ Closed';
+      const row = btn.closest('.check-proc-row');
+      if (row) row.style.borderColor = 'rgba(52,211,153,.35)';
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = origHTML;
+      btn.title = 'Failed: ' + (result.error || 'unknown error') + ' — please close it manually';
+      // Flash red to indicate failure
+      btn.style.boxShadow = '0 0 0 2px rgba(248,113,113,.8)';
+      setTimeout(() => { btn.style.boxShadow = ''; }, 1500);
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  }
+}
+
+// ─── STEP 7 — Lockdown ────────────────────────────────────────────────────────
+async function runLockdown() {
+  const prog      = document.getElementById('lock-prog');
+  const statusTxt = document.getElementById('lock-status-text');
+  const sub       = document.getElementById('lock-sub');
+  const items     = document.getElementById('lock-items');
+
+  const tasks = [
+    'Starting Focus Guard…',
+    'Activating process monitor…',
+    'Enabling risk engine…',
+    'Starting proctoring…',
+    'Locking keyboard shortcuts…',
+    'Enforcing fullscreen…',
+  ];
+
+  items.innerHTML = '';
+
+  // Animate progress
+  let p = 0;
+  const step = 100 / tasks.length;
+
+  for (let i = 0; i < tasks.length; i++) {
+    statusTxt.textContent = tasks[i];
+    await new Promise(r => setTimeout(r, 350));
+    p += step;
+    prog.style.width = p + '%';
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 14px;background:rgba(255,255,255,.03);border-radius:8px;font-size:.8rem;opacity:0;transition:opacity .3s;';
+    row.innerHTML = `<span style="color:var(--success);font-size:.9rem;">✓</span>${tasks[i].replace('…', ' complete')}`;
+    items.appendChild(row);
+    requestAnimationFrame(() => requestAnimationFrame(() => { row.style.opacity = '1'; }));
+  }
+
+  // Call main process to activate all security controls
+  try {
+    if (window.sebWizard) await window.sebWizard.enterLockdown();
+  } catch (err) {
+    console.error('Lockdown error:', err);
+  }
+
+  prog.style.width = '100%';
+  statusTxt.textContent = 'Secure mode active';
+  statusTxt.style.color = 'var(--success)';
+  sub.textContent = 'All security controls are now enforced';
+
+  await new Promise(r => setTimeout(r, 800));
+  goTo(8);
+}
+
+// ─── STEP 8 — Launch ──────────────────────────────────────────────────────────
+async function runLaunch() {
+  const prog = document.getElementById('launch-prog');
+  const txt  = document.getElementById('launch-text');
+
+  const msgs = ['Connecting to exam server…', 'Loading exam content…', 'Almost ready…'];
+  let p = 0;
+
+  for (const msg of msgs) {
+    txt.textContent = msg;
+    await new Promise(r => setTimeout(r, 600));
+    p += 33;
+    prog.style.width = p + '%';
+  }
+
+  try {
+    if (window.sebWizard) await window.sebWizard.launchExam();
+    else {
+      txt.textContent = 'Exam URL would load here (dev mode)';
+      prog.style.width = '100%';
+    }
+  } catch (err) {
+    txt.textContent = 'Error launching exam: ' + err.message;
+  }
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+buildRail();
+</script>
+</body>
+</html>

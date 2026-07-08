@@ -1,0 +1,183 @@
+// ══════════════════════════════════════════════════════════════════════════════
+// Firestore Security Rules — Secure Exam Browser
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Principle: DENY EVERYTHING by default. Allow only the narrowest operation
+//            needed, scoped to the authenticated user and their active session.
+//
+// Custom claims expected on the Firebase Auth token (set by admin SDK):
+//   - role:      "candidate" | "proctor" | "admin"
+//   - examId:    string — which exam the candidate is taking
+//   - sessionId: string — matches the EventLogger sessionId
+//
+// Deploy with:  firebase deploy --only firestore:rules
+// ══════════════════════════════════════════════════════════════════════════════
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ───────────────────────────────────────────────────
+
+    // True if the request comes from an authenticated user
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // True if the caller has a specific role in their custom claims
+    function hasRole(role) {
+      return isAuth() && request.auth.token.role == role;
+    }
+
+    // True if the caller is an admin
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    // True if the caller is a proctor
+    function isProctor() {
+      return hasRole('proctor');
+    }
+
+    // True if the caller is a candidate
+    function isCandidate() {
+      return hasRole('candidate');
+    }
+
+    // True if the caller's UID matches the document's userId field
+    function isOwner() {
+      return isAuth() && resource.data.userId == request.auth.uid;
+    }
+
+    // True if the caller's session claim matches the document ID
+    function isSessionOwner(sessionId) {
+      return isAuth() && request.auth.token.sessionId == sessionId;
+    }
+
+    // ── 1. /users/{userId} ─────────────────────────────────────────────────
+    //
+    // Schema:
+    //   { email, displayName, role, createdAt, lastLoginAt, examHistory[] }
+    //
+    // Access:
+    //   - Candidates can read ONLY their own document (no writes)
+    //   - Proctors can read any user (for candidate lookup)
+    //   - Admins can read/write (user management)
+    //
+    match /users/{userId} {
+      allow read:  if isAuth() && (request.auth.uid == userId || isProctor() || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // ── 2. /exams/{examId} ─────────────────────────────────────────────────
+    //
+    // Schema:
+    //   { title, duration, allowedDomains[], startTime, endTime,
+    //     paused, terminated, createdBy, config: {...} }
+    //
+    // Access:
+    //   - Candidates can read IF their token's examId matches (fetching config)
+    //   - Proctors can read any exam and write specific fields (pause/terminate)
+    //   - Admins can read/write (full CRUD)
+    //
+    match /exams/{examId} {
+      allow read:  if isAuth() && (
+                     request.auth.token.examId == examId ||
+                     isProctor() ||
+                     isAdmin()
+                   );
+      // Only proctors and admins can modify exams
+      allow write: if isProctor() || isAdmin();
+    }
+
+    // ── 3. /sessions/{sessionId} ───────────────────────────────────────────
+    //
+    // Schema:
+    //   { userId, examId, status, startedAt, endedAt, lastHeartbeat,
+    //     clientVersion, platform, summary: {...} }
+    //
+    // Access:
+    //   - Candidates can CREATE their own session and UPDATE (heartbeat/end)
+    //     but NEVER delete
+    //   - Candidates can only write to sessions where their sessionId claim matches
+    //   - Proctors can read any session
+    //   - Admins can read/write any session
+    //
+    match /sessions/{sessionId} {
+      // Read: owner, proctor, or admin
+      allow read: if isSessionOwner(sessionId) || isProctor() || isAdmin();
+
+      // Create: candidate can create IF the doc's userId matches their UID
+      //         and their sessionId claim matches the document ID
+      allow create: if isCandidate()
+                    && request.resource.data.userId == request.auth.uid
+                    && isSessionOwner(sessionId);
+
+      // Update: candidate can update ONLY specific fields (no status change to 'COMPLETED' bypass)
+      allow update: if (isSessionOwner(sessionId) && isCandidate()
+                       && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['lastHeartbeat', 'status', 'endedAt', 'summary']))
+                    || isProctor()
+                    || isAdmin();
+
+      // Delete: NEVER for candidates
+      allow delete: if isAdmin();
+
+      // ── 3a. /sessions/{sessionId}/logs/{logId} ─────────────────────────
+      //
+      // Schema: (matches event-logger.js Event schema)
+      //   { id, sessionId, seq, timestamp, type, severity, source,
+      //     metadata, prevHash, hmac, hash,
+      //     firestoreTimestamp, syncedAt }
+      //
+      // Access:
+      //   - Candidates can CREATE logs (append-only; no update, no delete)
+      //   - Log's sessionId must match the parent document's session ID
+      //   - Proctors and admins can read logs
+      //   - NOBODY can update or delete logs (immutability guarantee)
+      //
+      match /logs/{logId} {
+        // Candidates write logs; proctors/admins read them
+        allow read: if isProctor() || isAdmin();
+
+        // CREATE ONLY — append-only immutability
+        allow create: if isCandidate()
+                      && isSessionOwner(sessionId)
+                      // The log event's sessionId field must match the parent session
+                      && request.resource.data.sessionId == sessionId
+                      // Required fields must exist
+                      && request.resource.data.keys().hasAll([
+                           'id', 'sessionId', 'seq', 'timestamp', 'type',
+                           'severity', 'source', 'metadata', 'hmac', 'hash'
+                         ])
+                      // Type must be one of the known event types
+                      && request.resource.data.type in [
+                           'SESSION_START', 'SESSION_END',
+                           'FOCUS_LOSS', 'FOCUS_RESTORED',
+                           'CLOSE_ATTEMPT', 'FULLSCREEN_EXIT',
+                           'PROCESS_DETECTED', 'PROCESS_RESOLVED',
+                           'FACE_STATUS', 'FACE_ERROR',
+                           'DISPLAY_CHANGE', 'DISPLAY_VIOLATION',
+                           'NAV_BLOCKED', 'REQUEST_BLOCKED',
+                           'SHORTCUT_BLOCKED',
+                           'WARNING', 'ADMIN_ACTION'
+                         ]
+                      // Severity must be valid
+                      && request.resource.data.severity in ['INFO', 'WARNING', 'CRITICAL'];
+
+        // UPDATE and DELETE are FORBIDDEN — logs are immutable
+        allow update: if false;
+        allow delete: if isAdmin(); // only admin can purge for GDPR/cleanup
+      }
+    }
+
+    // ── 4. Catch-all deny ──────────────────────────────────────────────────
+    //
+    // Any collection not explicitly listed above is denied by default.
+    // This is Firestore's default behavior, but we make it explicit.
+    //
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "name": "secure-assessment-browser",
+  "version": "1.0.0",
+  "description": "Secure browser for online assessments - locks down navigation and browser controls",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:admin": "electron . --admin",
+    "build": "electron-builder --win --config",
+    "pack": "electron-builder --dir"
+  },
+  "keywords": [
+    "secure",
+    "browser",
+    "assessment",
+    "electron"
+  ],
+  "author": "Your Company",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.company.secure-browser",
+    "productName": "Secure Assessment Browser",
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": true
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "config.json",
+      "assets/**"
+    ]
+  },
+  "dependencies": {
+    "@tensorflow-models/blazeface": "^0.1.0",
+    "@tensorflow/tfjs": "^4.22.0",
+    "firebase": "^12.14.0"
+  }
+}
