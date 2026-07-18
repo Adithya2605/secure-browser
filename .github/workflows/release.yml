@@ -1,0 +1,75 @@
+﻿name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"   # triggers on tags like v1.0.0, v1.2.3, etc.
+
+permissions:
+  contents: write   # needed to create releases and upload assets
+
+jobs:
+  build-windows:
+    name: Build Windows Installer & Portable
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Electron app (NSIS + Portable)
+        run: npm run build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List dist folder
+        run: dir dist
+
+      - name: Upload NSIS Installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecureAssessmentBrowser-Setup-${{ github.ref_name }}
+          path: dist/*Setup*.exe
+
+      - name: Upload Portable EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecureAssessmentBrowser-Portable-${{ github.ref_name }}
+          path: dist/*Portable*.exe
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Secure Assessment Browser ${{ github.ref_name }}
+          body: |
+            ## Secure Assessment Browser ${{ github.ref_name }}
+
+            ### Downloads
+            | File | Description |
+            |------|-------------|
+            | `*Setup.exe` | Windows installer (requires admin, installs per-machine) |
+            | `*Portable.exe` | Portable — run directly, no installation needed |
+
+            ### What is included
+            - Fullscreen lockdown with auto re-entry
+            - Navigation and domain whitelist
+            - DevTools, context menu, and keyboard shortcut blocking
+            - Firebase sync and proctoring support
+
+            Configure config.json before distributing to set your assessment URL.
+          files: |
+            dist/*Setup*.exe
+            dist/*Portable*.exe
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

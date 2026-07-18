@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "start:admin": "electron . --admin",
-    "build": "electron-builder --win --config",
+    "build": "electron-builder --win",
     "pack": "electron-builder --dir"
   },
   "keywords": [
@@ -25,7 +25,7 @@
     "appId": "com.company.secure-browser",
     "productName": "Secure Assessment Browser",
     "win": {
-      "target": "nsis",
+      "target": ["nsis", "portable"],
       "icon": "assets/icon.ico"
     },
     "nsis": {
@@ -35,8 +35,24 @@
     "files": [
       "main.js",
       "preload.js",
+      "launch-preload.js",
+      "launch-wizard.html",
+      "proctor-window.html",
+      "proctor.js",
+      "blocked-apps.js",
+      "config-manager.js",
       "config.json",
-      "assets/**"
+      "download-model.js",
+      "env-check.js",
+      "event-logger.js",
+      "focus-guard.js",
+      "network-guard.js",
+      "process-monitor.js",
+      "risk-engine.js",
+      "screen-monitor.js",
+      "sync-client.js",
+      "assets/**",
+      "firebase/**"
     ]
   },
   "dependencies": {
